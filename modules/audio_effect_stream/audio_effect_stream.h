@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  bone_attachment_3d.h                                                 */
+/*  audio_effect_stream.h                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -28,68 +28,58 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef BONE_ATTACHMENT_H
-#define BONE_ATTACHMENT_H
+#ifndef AUDIO_EFFECT_STREAM_OPUS_H
+#define AUDIO_EFFECT_STREAM_OPUS_H
 
-#include "scene/3d/skeleton_3d.h"
+#include "core/engine.h"
+#include "servers/audio_server.h"
 
-class BoneAttachment3D : public Node3D {
-	GDCLASS(BoneAttachment3D, Node3D);
+#include "ring_buffer_audio_frame.h"
+#include "servers/audio/audio_effect.h"
 
-	bool bound;
-	String bone_name;
-	int bone_idx = -1;
+class AudioEffectStream;
 
-	bool override_pose = false;
-	int override_mode = 0;
-	bool _override_dirty = false;
+class AudioEffectStreamInstance : public AudioEffectInstance {
+	GDCLASS(AudioEffectStreamInstance, AudioEffectInstance);
+	friend class AudioEffectStream;
+	Ref<AudioEffectStream> base;
 
-	enum OVERRIDE_MODES {
-		MODE_GLOBAL_POSE,
-		MODE_LOCAL_POSE,
-		MODE_CUSTOM_POSE
+	bool is_streaming = false;
+
+	Ref<RingBufferAudioFrame> output_ring_buffer;
+	enum {
+		IO_BUFFER_SIZE_MS = 1500
 	};
 
-	bool use_external_skeleton = false;
-	NodePath external_skeleton_node;
-	ObjectID external_skeleton_node_cache;
+public:
+	void init();
+	virtual void process(const AudioFrame *p_src_frames, AudioFrame *p_dst_frames, int p_frame_count) override;
+	virtual bool process_silence() const override;
+	AudioEffectStreamInstance();
+	~AudioEffectStreamInstance();
+	void set_streaming(bool val);
+	bool get_streaming() const;
+};
 
-	void _check_bind();
-	void _check_unbind();
+class AudioEffectStream : public AudioEffect {
+	GDCLASS(AudioEffectStream, AudioEffect)
+	friend class AudioEffectStreamInstance;
 
-	void _transform_changed();
-	void _update_external_skeleton_cache();
-	Skeleton3D *_get_skeleton3d();
+	Ref<AudioEffectStreamInstance> current_instance;
 
 protected:
-	virtual void _validate_property(PropertyInfo &property) const override;
-	bool _get(const StringName &p_path, Variant &r_ret) const;
-	bool _set(const StringName &p_path, const Variant &p_value);
-	void _get_property_list(List<PropertyInfo> *p_list) const;
-	void _notification(int p_what);
-
 	static void _bind_methods();
 
 public:
-	void set_bone_name(const String &p_name);
-	String get_bone_name() const;
+	virtual Ref<AudioEffectInstance> instance() override;
 
-	void set_bone_idx(const int &p_idx);
-	int get_bone_idx() const;
+	Ref<RingBufferAudioFrame> init(int32_t p_ring_buffer_max_size);
+	bool is_streaming_active() const;
+	AudioEffectStream();
+	~AudioEffectStream();
 
-	void set_override_pose(bool p_override);
-	bool get_override_pose() const;
-	void set_override_mode(int p_mode);
-	int get_override_mode() const;
-
-	void set_use_external_skeleton(bool p_external_skeleton);
-	bool get_use_external_skeleton() const;
-	void set_external_skeleton(NodePath p_skeleton);
-	NodePath get_external_skeleton() const;
-
-	virtual void on_bone_pose_update(int p_bone_index);
-
-	BoneAttachment3D();
+private:
+	bool buffering_active;
 };
 
-#endif // BONE_ATTACHMENT_H
+#endif // AUDIO_EFFECT_STREAM_OPUS_H

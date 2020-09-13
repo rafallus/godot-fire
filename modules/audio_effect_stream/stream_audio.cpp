@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  bone_attachment_3d.h                                                 */
+/*  stream_audio.cpp                                                     */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -28,68 +28,57 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef BONE_ATTACHMENT_H
-#define BONE_ATTACHMENT_H
+#include "stream_audio.h"
 
-#include "scene/3d/skeleton_3d.h"
+void StreamAudio::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_audio_frames", "frames"), &StreamAudio::get_audio_frames);
+	ClassDB::bind_method(D_METHOD("set_audio_effect_stream", "bus", "effect"), &StreamAudio::set_audio_effect_stream);
+	ClassDB::bind_method(D_METHOD("clear"), &StreamAudio::clear);
+}
 
-class BoneAttachment3D : public Node3D {
-	GDCLASS(BoneAttachment3D, Node3D);
+StreamAudio::StreamAudio() {
+}
 
-	bool bound;
-	String bone_name;
-	int bone_idx = -1;
+StreamAudio::~StreamAudio() {
+	clear();
+}
+Vector<float> StreamAudio::get_audio_frames(int32_t p_frames) {
+	ERR_FAIL_COND_V(p_frames >= ring_buffer->get().size(), Vector<float>());
+	ERR_FAIL_COND_V(ring_buffer.is_null(), Vector<float>());
+	int data_left = ring_buffer->get().data_left();
+	if (data_left < p_frames || !data_left) {
+		return Vector<float>();
+	}
+	data_left = p_frames;
 
-	bool override_pose = false;
-	int override_mode = 0;
-	bool _override_dirty = false;
+	Vector<AudioFrame> streaming_data;
+	streaming_data.resize(data_left);
+	ring_buffer->get().read(streaming_data.ptrw(), data_left);
+	Vector<float> output;
+	output.resize(data_left * 2);
+	for (int32_t i = 0; i < streaming_data.size(); i++) {
+		output.write[(i * 2) + 0] = streaming_data[i].l;
+		output.write[(i * 2) + 1] = streaming_data[i].r;
+	}
+	return output;
+}
 
-	enum OVERRIDE_MODES {
-		MODE_GLOBAL_POSE,
-		MODE_LOCAL_POSE,
-		MODE_CUSTOM_POSE
-	};
+void StreamAudio::set_audio_effect_stream(int32_t p_bus, int32_t p_effect) {
+	Ref<AudioEffectStream> current_effect = AudioServer::get_singleton()->get_bus_effect(p_bus, p_effect);
+	if (current_effect.is_null()) {
+		return;
+	}
+	float ring_buffer_max_size = IO_BUFFER_SIZE_MS;
+	ring_buffer_max_size /= 1000.0; //convert to seconds
+	ring_buffer_max_size *= AudioServer::get_singleton()->get_mix_rate();
+	ring_buffer = current_effect->init(ring_buffer_max_size);
+}
 
-	bool use_external_skeleton = false;
-	NodePath external_skeleton_node;
-	ObjectID external_skeleton_node_cache;
-
-	void _check_bind();
-	void _check_unbind();
-
-	void _transform_changed();
-	void _update_external_skeleton_cache();
-	Skeleton3D *_get_skeleton3d();
-
-protected:
-	virtual void _validate_property(PropertyInfo &property) const override;
-	bool _get(const StringName &p_path, Variant &r_ret) const;
-	bool _set(const StringName &p_path, const Variant &p_value);
-	void _get_property_list(List<PropertyInfo> *p_list) const;
-	void _notification(int p_what);
-
-	static void _bind_methods();
-
-public:
-	void set_bone_name(const String &p_name);
-	String get_bone_name() const;
-
-	void set_bone_idx(const int &p_idx);
-	int get_bone_idx() const;
-
-	void set_override_pose(bool p_override);
-	bool get_override_pose() const;
-	void set_override_mode(int p_mode);
-	int get_override_mode() const;
-
-	void set_use_external_skeleton(bool p_external_skeleton);
-	bool get_use_external_skeleton() const;
-	void set_external_skeleton(NodePath p_skeleton);
-	NodePath get_external_skeleton() const;
-
-	virtual void on_bone_pose_update(int p_bone_index);
-
-	BoneAttachment3D();
-};
-
-#endif // BONE_ATTACHMENT_H
+void StreamAudio::clear() {
+	if (ring_buffer.is_null()) {
+		return;
+	}
+	const int32_t data_left = ring_buffer->get().data_left();
+	ring_buffer->get().advance_read(data_left);
+	ring_buffer.unref();
+}
