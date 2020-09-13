@@ -1,1 +1,10 @@
 master-extended
+extended/audio-effect-stream
+extended/bone-parent-to-child
+extended/cubic-interpolation
+extended/ik
+extended/mesh-unwrap
+extended/move-mesh-to-root
+extended/object-context-menu
+extended/remove-empties
+extended/wireframe
